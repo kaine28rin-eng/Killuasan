@@ -4,10 +4,14 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>STUDYX · PDF Viewer</title>
+  
+  <!-- 1. Preload the heavy PDF engines so they download instantly -->
+  <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js" as="script">
+  <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js" as="script">
+
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   
-  <!-- Rock-solid CDN bypass -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
   
   <style>
@@ -24,14 +28,14 @@
       font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
       color: var(--text-main);
       overflow-x: hidden;
-      overflow-y: auto; /* Allows vertical scrolling */
+      overflow-y: auto;
     }
     #flipbookView {
       position: absolute; top: 0; left: 0; width: 100%; min-height: 100vh;
       background: #000; z-index: 200; padding: 0; margin: 0;
     }
     .flipbook-header {
-      position: fixed; /* Keeps header at top while scrolling */
+      position: fixed;
       top: 0; left: 0; right: 0;
       display: flex; align-items: center; justify-content: space-between;
       padding: 16px 20px; z-index: 100; background: rgba(0,0,0,0.8);
@@ -51,22 +55,22 @@
       text-decoration: none;
     }
     .page-container {
-      margin-top: 80px; /* Space for the fixed header */
-      margin-bottom: 80px; /* Space for the indicator */
+      margin-top: 80px;
+      margin-bottom: 80px;
       width: 100%;
       display: flex;
       justify-content: center;
     }
     .page-canvas {
-      width: 96%; /* Fits screen width */
+      width: 96%;
       max-width: 800px;
-      height: auto; /* Allows natural scaling for vertical scroll */
+      height: auto;
       background: #fff;
       border-radius: 4px;
       box-shadow: 0 8px 32px rgba(0,0,0,0.4);
     }
     .nav-btn {
-      position: fixed; /* Float on screen while scrolling */
+      position: fixed;
       top: 50%; transform: translateY(-50%);
       width: 44px; height: 44px; border-radius: 12px;
       background: rgba(0,0,0,0.6); border: 1px solid var(--card-border);
@@ -76,7 +80,7 @@
     .nav-prev { left: 10px; }
     .nav-next { right: 10px; }
     .page-indicator {
-      position: fixed; /* Float at bottom */
+      position: fixed;
       bottom: 20px; left: 50%; transform: translateX(-50%);
       color: rgba(255,255,255,0.9); font-size: 14px; padding: 8px 16px;
       background: rgba(0,0,0,0.7); border-radius: 20px; z-index: 50;
@@ -119,8 +123,7 @@
     let pageRendering = false;
     let pageNumPending = null;
     
-    // Scale increased slightly for better mobile resolution reading
-    const scale = 2.0; 
+    const scale = 1.8; // Slightly reduced from 2.0 for faster rendering times
 
     function openFlipbook(pdfPath, title) {
       document.getElementById('flipbookTitle').innerText = title;
@@ -153,7 +156,12 @@
         
         pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
         
-        pdfjs.getDocument({ url: pdfPath }).promise.then(pdf => {
+        // 3. Added cMap arguments to speed up custom font parsing
+        pdfjs.getDocument({ 
+          url: pdfPath,
+          cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/cmaps/',
+          cMapPacked: true
+        }).promise.then(pdf => {
           pdfDoc = pdf;
           pageCount = pdf.numPages;
           currentPage = 1;
@@ -177,12 +185,18 @@
       
       pageRendering = true;
       const canvas = document.getElementById('pageCanvas');
-      const ctx = canvas.getContext('2d');
+      
+      // 2. Alpha: false forces hardware acceleration by ignoring transparency
+      const ctx = canvas.getContext('2d', { alpha: false }); 
       
       pdfDoc.getPage(currentPage).then(page => {
         const viewport = page.getViewport({ scale: scale });
         canvas.height = viewport.height;
         canvas.width = viewport.width;
+        
+        // Fill canvas with white before rendering to prevent black flashes
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
         
         const renderContext = { canvasContext: ctx, viewport: viewport };
         page.render(renderContext).promise.then(() => {
@@ -191,7 +205,6 @@
           document.getElementById('loadingOverlay').style.display = 'none';
           document.getElementById('pageCanvas').style.display = 'block';
           
-          // Scroll back to top when flipping pages
           window.scrollTo(0, 0);
           
           if (pageNumPending !== null) {
@@ -204,20 +217,37 @@
     }
 
     function nextPage() {
-      if (currentPage < pageCount) { currentPage++; renderPage(); }
+      if (currentPage < pageCount) {
+        document.getElementById('loadingOverlay').style.display = 'block';
+        currentPage++; 
+        renderPage(); 
+      }
     }
 
     function prevPage() {
-      if (currentPage > 1) { currentPage--; renderPage(); }
+      if (currentPage > 1) { 
+        document.getElementById('loadingOverlay').style.display = 'block';
+        currentPage--; 
+        renderPage(); 
+      }
     }
 
-    // Swipe controls for turning pages left/right
     let touchStartX = 0;
-    document.addEventListener('touchstart', e => { 
-      touchStartX = e.changedTouches[0].screenX; 
-    }, {passive: true});
-    
+    document.addEventListener('touchstart', e => { touchStartX = e.changedTouches[0].screenX; }, {passive: true});
     document.addEventListener('touchend', e => {
       let touchEndX = e.changedTouches[0].screenX;
-      // Require
-                              
+      if (touchStartX - touchEndX > 100) nextPage();
+      if (touchEndX - touchStartX > 100) prevPage();
+    }, {passive: true});
+
+    function handleBookParam() {
+      const params = new URLSearchParams(window.location.search);
+      const bookId = params.get('book');
+      if (!bookId) return;
+      openFlipbook('pdfs/' + bookId + '.pdf', bookId.replace(/-/g, ' '));
+    }
+
+    window.onload = handleBookParam;
+  </script>
+</body>
+</html>
