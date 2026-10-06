@@ -8,9 +8,11 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="js/pdf.js"></script>
   <script>
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'js/pdf.worker.min.js';
-    pdfjsLib.GlobalWorkerOptions.fallbackOnBlobSupport = false;
-    pdfjsLib.GlobalWorkerOptions.fallbackOnFontFace = false;
+    if (typeof pdfjsLib !== 'undefined' && pdfjsLib.GlobalWorkerOptions) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'js/pdf.worker.min.js';
+      pdfjsLib.GlobalWorkerOptions.fallbackOnBlobSupport = false;
+      pdfjsLib.GlobalWorkerOptions.fallbackOnFontFace = false;
+    }
   </script>
   <style>
     :root {
@@ -49,6 +51,7 @@
       background: var(--accent-grad); border: none; color: #fff;
       padding: 6px 14px; border-radius: 8px; font-size: 12px;
       font-weight: 700; cursor: pointer; margin-right: 8px;
+      text-decoration: none;
     }
     .page-container {
       position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
@@ -105,11 +108,9 @@
   </div>
 
   <script>
-    // Telegram Web App init
     const tg = window.Telegram?.WebApp;
     if (tg) { tg.expand(); tg.ready(); }
 
-    // ===== PDF.js State =====
     let pdfDoc = null;
     let currentPage = 1;
     let pageCount = 0;
@@ -118,7 +119,6 @@
     const scale = 1.5;
     let pdfLoadingTask = null;
 
-    // ===== Flipbook Viewer Functions =====
     function openFlipbook(pdfPath, title) {
       document.getElementById('flipbookTitle').innerText = title;
       document.getElementById('pageIndicator').innerText = 'Loading...';
@@ -177,12 +177,11 @@
         renderPage();
       }).catch(err => {
         console.error('PDF load error:', err);
-        const errorMsg = `Error: PDF file not found at ${pdfPath}\n\nDetails: ${err.message || err}`;
+        const errorMsg = `Error: PDF not found at ${pdfPath}\n\n${err.message || err}`;
         showFlipbookError(errorMsg);
       });
     }
 
-    // ===== Page Rendering =====
     function renderPage() {
       if (!pdfDoc) {
         showFlipbookError('Error: PDF document not loaded.');
@@ -207,7 +206,6 @@
             pageRendering = false;
             currentPage = num;
             document.getElementById('pageIndicator').innerText = `Page ${currentPage} / ${pageCount}`;
-            canvas.classList.add('loaded');
             document.getElementById('loadingOverlay').style.display = 'none';
             document.getElementById('pageCanvas').style.display = 'block';
             if (pageNumPending !== null) {
@@ -216,12 +214,12 @@
             }
           }).catch(err => {
             pageRendering = false;
-            console.error('PDF page render error:', err);
-            showFlipbookError(`Error rendering page ${num}\n\nDetails: ${err.message || err}`);
+            console.error('PDF render error:', err);
+            showFlipbookError(`Error rendering page ${num}\n\n${err.message || err}`);
           });
         }).catch(err => {
           pageRendering = false;
-          showFlipbookError(`Error loading page ${num}\n\nDetails: ${err.message || err}`);
+          showFlipbookError(`Error loading page ${num}\n\n${err.message || err}`);
         });
       };
       renderNextPage(currentPage);
@@ -235,7 +233,6 @@
       if (currentPage > 1) { currentPage--; renderPage(); }
     }
 
-    // Keyboard navigation
     document.addEventListener('keydown', (e) => {
       if (document.getElementById('flipbookView')) {
         if (e.key === 'ArrowLeft') prevPage();
@@ -244,7 +241,6 @@
       }
     });
 
-    // Touch swipe
     let touchStartX = 0;
     let touchEndX = 0;
     const pageContainer = document.getElementById('pageContainer');
@@ -257,7 +253,6 @@
       if (touchEndX > touchStartX + 50) prevPage();
     }, false);
 
-    // ===== Auto-Open Flipbook from ?book=<id> Query Parameter =====
     function handleBookParam() {
       const params = new URLSearchParams(window.location.search);
       const bookId = params.get('book');
@@ -274,12 +269,11 @@
           }
         })
         .catch(err => {
-          console.error('books.json fetch failed, using direct path:', err);
+          console.error('books.json fetch failed, fallback to direct path:', err);
           openFlipbook('pdfs/' + bookId + '.pdf', bookId.replace(/-/g, ' '));
         });
     }
 
-    // Initialize
     (async () => {
       handleBookParam();
     })();
