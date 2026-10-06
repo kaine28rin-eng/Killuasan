@@ -5,13 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>STUDYX · PDF Viewer</title>
   
-  <!-- 1. Preload the heavy PDF engines so they download instantly -->
-  <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js" as="script">
-  <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js" as="script">
-
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   
+  <!-- Standard CDN load (Preloads removed to prevent Brave browser blocking) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
   
   <style>
@@ -123,7 +120,7 @@
     let pageRendering = false;
     let pageNumPending = null;
     
-    const scale = 1.8; // Slightly reduced from 2.0 for faster rendering times
+    const scale = 1.8; 
 
     function openFlipbook(pdfPath, title) {
       document.getElementById('flipbookTitle').innerText = title;
@@ -156,7 +153,7 @@
         
         pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
         
-        // 3. Added cMap arguments to speed up custom font parsing
+        // Optimized font loading map
         pdfjs.getDocument({ 
           url: pdfPath,
           cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/cmaps/',
@@ -186,7 +183,7 @@
       pageRendering = true;
       const canvas = document.getElementById('pageCanvas');
       
-      // 2. Alpha: false forces hardware acceleration by ignoring transparency
+      // Hardware acceleration by ignoring transparency
       const ctx = canvas.getContext('2d', { alpha: false }); 
       
       pdfDoc.getPage(currentPage).then(page => {
@@ -194,7 +191,6 @@
         canvas.height = viewport.height;
         canvas.width = viewport.width;
         
-        // Fill canvas with white before rendering to prevent black flashes
         ctx.fillStyle = 'white';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         
@@ -247,7 +243,8 @@
       openFlipbook('pdfs/' + bookId + '.pdf', bookId.replace(/-/g, ' '));
     }
 
-    window.onload = handleBookParam;
+    // Trigger instantly instead of waiting for window.onload
+    handleBookParam();
   </script>
 </body>
 </html>
