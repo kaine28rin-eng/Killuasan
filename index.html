@@ -7,15 +7,9 @@
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   
-  <!-- Direct CDN Links for PDF.js -->
+  <!-- Rock-solid CDN bypass (ignores your local js/ folder) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
-  <script>
-    if (typeof pdfjsLib !== 'undefined' && pdfjsLib.GlobalWorkerOptions) {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
-      pdfjsLib.GlobalWorkerOptions.fallbackOnBlobSupport = false;
-      pdfjsLib.GlobalWorkerOptions.fallbackOnFontFace = false;
-    }
-  </script>
+  
   <style>
     :root {
       --bg: #0b0c10;
@@ -86,7 +80,7 @@
     }
     .loading-overlay {
       position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-      color: rgba(255, 75, 43, 0.9); font-size: 16px; font-weight: 600;
+      color: rgba(255, 75, 43, 0.9); font-size: 16px; font-weight: 600; text-align: center;
     }
   </style>
 </head>
@@ -119,7 +113,6 @@
     let pageRendering = false;
     let pageNumPending = null;
     const scale = 1.5;
-    let pdfLoadingTask = null;
 
     function openFlipbook(pdfPath, title) {
       document.getElementById('flipbookTitle').innerText = title;
@@ -134,97 +127,77 @@
 
     function closeFlipbook() {
       if (pdfDoc) { pdfDoc.destroy(); pdfDoc = null; }
-      if (pdfLoadingTask) { pdfLoadingTask.destroy(); pdfLoadingTask = null; }
       if (tg) { tg.close(); }
     }
 
     function showFlipbookError(msg) {
-      const canvas = document.getElementById('pageCanvas');
-      const ctx = canvas.getContext('2d');
-      if (canvas.width === 0 || canvas.height === 0) {
-        const container = canvas.parentElement;
-        canvas.width = container.clientWidth || 500;
-        canvas.height = container.clientHeight || 700;
-      }
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = '#000';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = '#ff4b2b';
-      ctx.font = '16px "Plus Jakarta Sans", sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      const lines = msg.split('\n');
-      lines.forEach((line, i) => {
-        ctx.fillText(line, canvas.width / 2, canvas.height / 2 - (lines.length - 1) * 12 + i * 24);
-      });
-      document.getElementById('loadingOverlay').style.display = 'none';
-      document.getElementById('pageCanvas').style.display = 'block';
+      document.getElementById('loadingOverlay').innerText = msg;
+      document.getElementById('loadingOverlay').style.color = '#ff4b2b';
+      document.getElementById('loadingOverlay').style.display = 'block';
+      document.getElementById('pageCanvas').style.display = 'none';
       document.getElementById('pageIndicator').innerText = 'Error';
     }
 
     function loadPdf(pdfPath) {
-      if (typeof pdfjsLib !== 'undefined' && pdfjsLib.GlobalWorkerOptions) {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+      try {
+        // Ensure PDF.js is loaded
+        const pdfjs = window['pdfjs-dist/build/pdf'] || window.pdfjsLib;
+        if (!pdfjs) throw new Error("PDF.js library failed to load.");
+        
+        pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+        
+        pdfjs.getDocument({ url: pdfPath }).promise.then(pdf => {
+          pdfDoc = pdf;
+          pageCount = pdf.numPages;
+          currentPage = 1;
+          document.getElementById('pageIndicator').innerText = `Page 1 / ${pageCount}`;
+          renderPage();
+        }).catch(err => {
+          console.error('PDF load error:', err);
+          showFlipbookError(`Error: PDF not found at ${pdfPath}\n\nMake sure the URL matches the exact file name.`);
+        });
+      } catch (e) {
+        showFlipbookError(e.message);
       }
-      if (pdfLoadingTask) {
-        pdfLoadingTask.destroy();
-        pdfLoadingTask = null;
-      }
-      pdfLoadingTask = pdfjsLib.getDocument({ url: pdfPath });
-      pdfLoadingTask.promise.then(pdf => {
-        pdfDoc = pdf;
-        pageCount = pdf.numPages;
-        currentPage = 1;
-        document.getElementById('pageIndicator').innerText = `Page 1 / ${pageCount}`;
-        renderPage();
-      }).catch(err => {
-        console.error('PDF load error:', err);
-        const errorMsg = `Error: PDF not found at ${pdfPath}\n\n${err.message || err}`;
-        showFlipbookError(errorMsg);
-      });
     }
 
     function renderPage() {
-      if (!pdfDoc) {
-        showFlipbookError('Error: PDF document not loaded.');
-        return;
-      }
+      if (!pdfDoc) return;
       if (pageRendering) {
         pageNumPending = currentPage;
         return;
       }
-      const renderNextPage = (num) => {
-        pageRendering = true;
-        const canvas = document.getElementById('pageCanvas');
-        const ctx = canvas.getContext('2d');
-        pdfDoc.getPage(num).then(page => {
-          const viewport = page.getViewport({ scale: scale });
-          canvas.height = viewport.height;
-          canvas.width = viewport.width;
-          canvas.style.width = '100%';
-          canvas.style.height = '100%';
-          const renderContext = { canvasContext: ctx, viewport: viewport };
-          page.render(renderContext).promise.then(() => {
-            pageRendering = false;
-            currentPage = num;
-            document.getElementById('pageIndicator').innerText = `Page ${currentPage} / ${pageCount}`;
-            document.getElementById('loadingOverlay').style.display = 'none';
-            document.getElementById('pageCanvas').style.display = 'block';
-            if (pageNumPending !== null) {
-              renderNextPage(pageNumPending);
-              pageNumPending = null;
-            }
-          }).catch(err => {
-            pageRendering = false;
-            console.error('PDF render error:', err);
-            showFlipbookError(`Error rendering page ${num}\n\n${err.message || err}`);
-          });
+      
+      pageRendering = true;
+      const canvas = document.getElementById('pageCanvas');
+      const ctx = canvas.getContext('2d');
+      
+      pdfDoc.getPage(currentPage).then(page => {
+        const viewport = page.getViewport({ scale: scale });
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
+        
+        const renderContext = { canvasContext: ctx, viewport: viewport };
+        page.render(renderContext).promise.then(() => {
+          pageRendering = false;
+          document.getElementById('pageIndicator').innerText = `Page ${currentPage} / ${pageCount}`;
+          document.getElementById('loadingOverlay').style.display = 'none';
+          document.getElementById('pageCanvas').style.display = 'block';
+          if (pageNumPending !== null) {
+            currentPage = pageNumPending;
+            pageNumPending = null;
+            renderPage();
+          }
         }).catch(err => {
           pageRendering = false;
-          showFlipbookError(`Error loading page ${num}\n\n${err.message || err}`);
+          showFlipbookError(`Error rendering page ${currentPage}`);
         });
-      };
-      renderNextPage(currentPage);
+      }).catch(err => {
+        pageRendering = false;
+        showFlipbookError(`Error loading page ${currentPage}`);
+      });
     }
 
     function nextPage() {
@@ -232,53 +205,5 @@
     }
 
     function prevPage() {
-      if (currentPage > 1) { currentPage--; renderPage(); }
-    }
-
-    document.addEventListener('keydown', (e) => {
-      if (document.getElementById('flipbookView')) {
-        if (e.key === 'ArrowLeft') prevPage();
-        if (e.key === 'ArrowRight') nextPage();
-        if (e.key === 'Escape') closeFlipbook();
-      }
-    });
-
-    let touchStartX = 0;
-    let touchEndX = 0;
-    const pageContainer = document.getElementById('pageContainer');
-    pageContainer.addEventListener('touchstart', e => {
-      touchStartX = e.changedTouches[0].screenX;
-    }, false);
-    pageContainer.addEventListener('touchend', e => {
-      touchEndX = e.changedTouches[0].screenX;
-      if (touchEndX < touchStartX - 50) nextPage();
-      if (touchEndX > touchStartX + 50) prevPage();
-    }, false);
-
-    function handleBookParam() {
-      const params = new URLSearchParams(window.location.search);
-      const bookId = params.get('book');
-      if (!bookId) return;
-
-      fetch('data/books.json')
-        .then(r => r.json())
-        .then(data => {
-          const book = (data.books || []).find(b => b.book_id === bookId);
-          if (book) {
-            openFlipbook(book.pdf_path, book.title);
-          } else {
-            openFlipbook('pdfs/' + bookId + '.pdf', bookId.replace(/-/g, ' '));
-          }
-        })
-        .catch(err => {
-          console.error('books.json fetch failed, fallback to direct path:', err);
-          openFlipbook('pdfs/' + bookId + '.pdf', bookId.replace(/-/g, ' '));
-        });
-    }
-
-    (async () => {
-      handleBookParam();
-    })();
-  </script>
-</body>
-</html>
+      if (currentPage > 1) { currentPage--; renderPage();
+                            
